@@ -7,8 +7,6 @@ Two personal mods for the [Herdr](https://herdr.dev) app, plus an installer that
 - **Sessions** ([`sessions/`](sessions/RECIPE.md)): lists Claude Code, Codex and Kiro sessions on every machine Herdr knows. You can
   resume, fork or delete them.
 
-![Diff as a dialog](session-diff/preview.png)
-
 ## Using Diff
 
 Diff shows the folder of the focused terminal. The first time it sees a folder, it saves a baseline, and every change
@@ -23,6 +21,8 @@ the diff side by side, as the dialog does.
 
 **As a separate dialog:** press `cmd-shift-g` (`ctrl-shift-g` on Linux) to open Diff as a large window over everything.
 Press it again, press `Esc` or click `×` to close it.
+
+![Diff as a dialog](session-diff/preview.png)
 
 Inside Diff:
 - Pick a file in the list, or **All changes**. **Diff**, **Before** and **After** choose what's shown, and the grid
