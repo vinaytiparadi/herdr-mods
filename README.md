@@ -126,3 +126,7 @@ rm -rf ~/.config/herdr-app/mods/{session-diff,sessions,my-tabs} ~/.config/herdr-
 Then remove the `mod.open:sessions` and `mod.open:session-diff` keys and the `mod:session-diff` section from
 `~/.config/herdr-app/keys.json`.
 Baseline and index caches live in `~/.cache/herdr-session-diff` and `~/.cache/herdr-sessions` on each machine.
+
+## License
+
+[MIT](LICENSE)
