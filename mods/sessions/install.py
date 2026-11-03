@@ -21,7 +21,8 @@ MODS, LAYOUTS = os.path.join(HOME, "mods"), os.path.join(HOME, "layouts")
 TABS, LAYOUT = "my-tabs", "my-herdr"
 MAC = sys.platform == "darwin"
 KEYS = {
-    "global": {("cmd" if MAC else "ctrl") + "-shift-s": "mod.open:sessions"},
+    "global": {("cmd" if MAC else "ctrl") + "-shift-s": "mod.open:sessions",
+               ("cmd" if MAC else "ctrl") + "-shift-g": "mod.open:session-diff"},
     "mod:session-diff": {("cmd" if MAC else "ctrl") + "-c": "session-diff.copy",
                          ("cmd" if MAC else "ctrl") + "-shift-c": "session-diff.copy-patch",
                          ("cmd" if MAC else "ctrl") + "-a": "session-diff.all"},
