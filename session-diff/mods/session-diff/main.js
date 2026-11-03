@@ -407,23 +407,26 @@ export default class SessionDiff extends View {
   // monospaced; a column is charW wide, measured from the font. The edges are the scrollbars.
   numW() { return 14 + this.digits * this.charW; }
   both() { return this.cols === "both" && (this.size?.width ?? 1000) >= 520; }
+  // Side by side, the rows are as wide as the view: each half keeps its place, and the code in both
+  // halves scrolls sideways together, as far as the longest line needs. scrollW is that scroll range.
   contentW() {
-    const code = 40 + this.longest * this.charW;
-    return Math.max(this.viewW, this.split ? 2 * (this.numW() + code) + 1 : this.numW() * (this.both() ? 2 : 1) + code);
+    if (this.split) return this.viewW;
+    return Math.max(this.viewW, this.numW() * (this.both() ? 2 : 1) + 40 + this.longest * this.charW);
   }
+  scrollW() { return this.split ? this.viewW + Math.max(0, this.numW() + 40 + this.longest * this.charW - this.half()) : this.contentW(); }
   half() { return (this.contentW() - 1) / 2; }
   codeX(side) { return side === "right" ? this.half() + 1 + this.numW() + 16 : this.numW() * (!this.split && this.both() ? 2 : 1) + 16; }
 
   scroll(dy, dx = 0) {
     this.top = Math.max(0, Math.min(this.top + dy, this.list().length * ROW - this.viewH));
-    this.left = Math.max(0, Math.min(this.left + dx, this.contentW() - this.viewW));
+    this.left = Math.max(0, Math.min(this.left + dx, this.scrollW() - this.viewW));
   }
 
   // The row, column and side under the pointer. A selection being made stays on its side.
   pointAt(e) {
     const x = (e.local_position?.x ?? 0) / zoom() + this.left, y = (e.local_position?.y ?? 0) / zoom();
     const row = Math.max(0, Math.min(this.list().length - 1, Math.floor((this.top + y) / ROW)));
-    const side = !this.split ? null : this.dragging && this.side ? this.side : x < this.half() ? "left" : "right";
+    const side = !this.split ? null : this.dragging && this.side ? this.side : x - this.left < this.half() ? "left" : "right";
     return { row, col: Math.max(0, Math.round((x - this.codeX(side)) / this.charW)), side };
   }
 
@@ -433,7 +436,7 @@ export default class SessionDiff extends View {
   thumbTo(e, axis) {
     const x = (e.local_position?.x ?? 0) / zoom(), y = (e.local_position?.y ?? 0) / zoom();
     if (axis === "y") { this.top = 0; this.scroll((y / this.viewH) * this.list().length * ROW - this.viewH / 2); }
-    else { this.left = 0; this.scroll(0, (x / this.viewW) * this.contentW() - this.viewW / 2); }
+    else { this.left = 0; this.scroll(0, (x / this.viewW) * this.scrollW() - this.viewW / 2); }
   }
 
   press(e, cx) {
@@ -444,7 +447,7 @@ export default class SessionDiff extends View {
     if (!this.list().length) return;
     const x = (e.local_position?.x ?? 0) / zoom(), y = (e.local_position?.y ?? 0) / zoom();
     if (x > this.viewW - 12 && this.list().length * ROW > this.viewH) { this.thumb = "y"; this.thumbTo(e, "y"); cx.notify(); return; }
-    if (y > this.viewH - 12 && this.contentW() > this.viewW + 1) { this.thumb = "x"; this.thumbTo(e, "x"); cx.notify(); return; }
+    if (y > this.viewH - 12 && this.scrollW() > this.viewW + 1) { this.thumb = "x"; this.thumbTo(e, "x"); cx.notify(); return; }
     const p = this.pointAt(e);
     if (e.modifiers.shift && this.sel) this.sel = { a: this.sel.a, b: p };
     else {
@@ -574,7 +577,8 @@ export default class SessionDiff extends View {
     const cut = this.cut(i);
     const half = (c, side) => !c ? div().flex_1().min_w(0).h_full().bg(alpha(t.border, "30"))
       : this.tint(h_flex().flex_1().min_w(0).h_full().items_center().overflow_hidden(), c, t)
-        .child(this.num(side === "left" ? c.old : c.now, t)).child(this.sign(c, t)).child(this.code(c, t, this.side === side ? cut : null));
+        .child(h_flex().flex_none().h_full().items_center().relative().left(-this.left)
+          .child(this.num(side === "left" ? c.old : c.now, t)).child(this.sign(c, t)).child(this.code(c, t, this.side === side ? cut : null)));
     return h_flex().w_full().h(ROW).flex_none().child(half(r.left, "left")).child(div().w(1).h_full().flex_none().bg(t.border)).child(half(r.right, "right"));
   }
 
@@ -623,7 +627,7 @@ export default class SessionDiff extends View {
       .child(this.editor ? Editor.new(this.editor).flex_1().min_h(0) : message(this.textNote || "Loading…"));
     const rows = this.list(), first = Math.floor(this.top / ROW), shown = rows.slice(first, first + Math.ceil(this.viewH / ROW) + 1);
     const total = rows.length * ROW, thumbH = Math.max(24, this.viewH * this.viewH / Math.max(total, 1));
-    const wide = this.contentW(), thumbW = Math.max(24, this.viewW * this.viewW / Math.max(wide, 1));
+    const wide = this.contentW(), sw = this.scrollW(), thumbW = Math.max(24, this.viewW * this.viewW / Math.max(sw, 1));
     return v_flex().flex_1().min_h(0).child(bar)
       .child(div().id("session-diff-view").flex_1().min_h(0).relative().overflow_hidden().cursor_text()
         .font_family(settings().font_family ?? "JetBrains Mono").text_size(12)
@@ -641,12 +645,12 @@ export default class SessionDiff extends View {
         .child(div().id("session-diff-measure").absolute().left(0).top(0).h(0).overflow_hidden().whitespace_nowrap()
           .on_size_change((size, cx) => { const w = size.width / zoom() / 100; if (w > 0 && Math.abs(w - this.charW) > 0.01) { this.charW = w; cx.notify(); } })
           .child("0".repeat(100)))
-        .child(v_flex().absolute().left(-this.left).top(-(this.top % ROW)).w(wide)
+        .child(v_flex().absolute().left(this.split ? 0 : -this.left).top(-(this.top % ROW)).w(wide)
           .children(shown.map((r, k) => r.kind === "pair" ? this.splitRow(r, t, first + k) : this.diffRow(r, t, first + k))))
         .when(total > this.viewH, (e) => e.child(div().absolute().right(2).w(6).rounded(3).bg(t.border)
           .top((this.top / Math.max(total - this.viewH, 1)) * (this.viewH - thumbH)).h(thumbH)))
-        .when(wide > this.viewW + 1, (e) => e.child(div().absolute().bottom(2).h(6).rounded(3).bg(t.border)
-          .left((this.left / Math.max(wide - this.viewW, 1)) * (this.viewW - thumbW)).w(thumbW)))
+        .when(sw > this.viewW + 1, (e) => e.child(div().absolute().bottom(2).h(6).rounded(3).bg(t.border)
+          .left((this.left / Math.max(sw - this.viewW, 1)) * (this.viewW - thumbW)).w(thumbW)))
         .when(!this.rows.length, (e) => e.child(div().absolute().top(0).child(message("Loading…")))));
   }
 

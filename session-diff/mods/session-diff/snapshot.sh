@@ -21,7 +21,7 @@ case $want in *[!0-9]*) want= ;; esac
 cd "$dir" 2>/dev/null || { echo "error	Folder not found: $dir"; exit 0; }
 
 # Regular files under 1 MiB, skipping VCS, dependency, environment and build output folders (a
-# Brazil workspace's env/ alone is hundreds of thousands of files; its code is in src/).
+# build workspace's env/ alone can be hundreds of thousands of files; its code is in src/).
 files() {
   find . \( -name .git -o -name .hg -o -name .svn -o -name node_modules -o -name .venv -o -name venv \
     -o -name env -o -name __pycache__ -o -name .gradle -o -name .idea -o -name build -o -name target \

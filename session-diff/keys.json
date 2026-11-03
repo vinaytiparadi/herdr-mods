@@ -1,0 +1,4 @@
+{
+  "global": { "cmd-shift-g": "mod.open:session-diff" },
+  "mod:session-diff": { "cmd-c": "session-diff.copy", "cmd-shift-c": "session-diff.copy-patch", "cmd-a": "session-diff.all" }
+}

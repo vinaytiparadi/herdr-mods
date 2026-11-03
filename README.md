@@ -2,12 +2,12 @@
 
 Two personal mods for the [Herdr](https://herdr.dev) app, plus an installer that adds them to a stock Herdr:
 
-- **Diff** (`mods/session-diff`): shows what an agent changed in any folder, including folders that aren't git repos. It
+- **Diff** ([`session-diff/`](session-diff/RECIPE.md)): shows what an agent changed in any folder, including folders that aren't git repos. It
   compares against snapshot baselines and has syntax highlighting, a side-by-side view and a baseline history.
-- **Sessions** (`mods/sessions`): lists Claude Code, Codex and Kiro sessions on every machine Herdr knows. You can
+- **Sessions** ([`sessions/`](sessions/RECIPE.md)): lists Claude Code, Codex and Kiro sessions on every machine Herdr knows. You can
   resume, fork or delete them.
 
-![Diff as a dialog](screenshots/diff.png)
+![Diff as a dialog](session-diff/preview.png)
 
 ## Using Diff
 
@@ -26,7 +26,11 @@ Press it again, press `Esc` or click `×` to close it.
 
 Inside Diff:
 - Pick a file in the list, or **All changes**. **Diff**, **Before** and **After** choose what's shown, and the grid
-  button next to them switches between unified and side-by-side.
+  button next to them switches between unified and side-by-side. Side by side, each half takes half the width and the
+  code in both scrolls sideways together.
+
+![Diff side by side](screenshots/diff-split.png)
+
 - `cmd-c` copies the selection, `cmd-shift-c` copies the patch, and `cmd-a` selects all.
 - Drag to select text, double-click to select a word, and triple-click to select a line.
 
@@ -44,7 +48,7 @@ Click **Sessions** in the tab bar to open it as a side panel, or press `cmd-shif
 it as a popup. The tabs choose the scope: the current folder, this computer, or all machines. Click a session to
 resume it in a new tab, or shift-click to fork it. Hover a session for its delete button.
 
-![Sessions popup, session names blurred](screenshots/sessions.png)
+![Sessions popup, session names blurred](sessions/preview.png)
 
 ## Install
 
@@ -52,14 +56,19 @@ Requires Herdr 0.1.10 or newer (started at least once) and `python3`.
 
 ```sh
 git clone https://github.com/vinaytiparadi/herdr-mods.git ~/herdr-mods   # gh repo clone vinaytiparadi/herdr-mods works too
-~/herdr-mods/install.sh
+~/herdr-mods/install.sh                 # both; or: install.sh session-diff / install.sh sessions
 ```
+
+Each mod is also a folder in Herdr's mod-sharing format (`RECIPE.md`, `preview.png`, `keys.json`, `mods/<name>/`), so an
+agent can add one the way herdr.dev/mods describes: copy `mods/<name>/`, merge `keys.json`, then run that mod's
+`install.py` to get the tab-bar button.
 
 What `install.sh` does, under `~/.config/herdr-app` (or `$HERDR_APP_HOME`):
 
-1. Copies `mods/session-diff` and `mods/sessions` into `mods/`. Copies already there are moved to
+1. Copies `session-diff/mods/session-diff` and/or `sessions/mods/sessions` into `mods/`. Copies already there are moved to
    `~/.cache/herdr-mods-backup/<time>/`.
-2. Runs `mods/sessions/install.py`. Herdr's shipped layouts and mods are read-only, so this builds:
+2. Runs the mod's `install.py` (both mods carry the same file, which handles whichever mods are installed). Herdr's
+   shipped layouts and mods are read-only, so this builds:
    - `mods/my-tabs`: a copy of this Herdr version's `tabs` mod, with Diff and Sessions buttons after Changes.
    - `layouts/my-herdr.json`: a copy of the `main` layout that uses `my-tabs` and has both panels in the side panel.
    - Key bindings in `keys.json`, added only where the key is free: `cmd-shift-s` (Sessions), `cmd-shift-g` (Diff
@@ -72,6 +81,16 @@ If a new Herdr's tab bar no longer fits the edits, `install.py` changes nothing,
 
 Nothing to do. The first time a new Herdr version starts, `my-tabs` notices that its `cloned_from.version` is out of
 date and re-runs `install.py`. If that fails you get a warning toast, and the old copies keep working.
+
+## What they touch
+
+Neither mod uses the network. Both run programs and read files outside their own folder:
+- **Diff** runs `sh` and `python3` (`snapshot.sh`, `baseline.py`) on the folder's machine. It reads the folder and keeps
+  baselines in `~/.cache/herdr-session-diff/` there.
+- **Sessions** runs `python3` (`scan.py`) on each machine. It reads `~/.claude/projects`, `~/.codex` and `~/.kiro`, keeps
+  an index in `~/.cache/herdr-sessions/`, and deletes a session only when you confirm it (with `codex delete`,
+  `kiro-cli … --delete-session`, or by removing a Claude Code session's files).
+- **install.py** writes `mods/my-tabs/`, `layouts/my-herdr.json` and new keys in `keys.json`, and runs `herdr-app check`.
 
 ## Notes for agents
 
@@ -89,8 +108,11 @@ The live copies are in `~/.config/herdr-app/mods/`. To push changes made there:
 
 ```sh
 cd ~/herdr-mods
-rsync -a --delete --exclude gpui-kit.d.ts --exclude jsconfig.json \
-  ~/.config/herdr-app/mods/session-diff ~/.config/herdr-app/mods/sessions mods/
+for m in session-diff sessions; do
+  rsync -a --delete --exclude gpui-kit.d.ts --exclude jsconfig.json --exclude __pycache__ \
+    ~/.config/herdr-app/mods/$m/ $m/mods/$m/
+done
+cmp session-diff/mods/session-diff/install.py sessions/mods/sessions/install.py   # keep the two copies identical
 git add -A && git commit -m "..." && git push
 ```
 
@@ -101,5 +123,6 @@ herdr-app do layout.switch '{"name":"main"}'
 rm -rf ~/.config/herdr-app/mods/{session-diff,sessions,my-tabs} ~/.config/herdr-app/layouts/my-herdr.json
 ```
 
-Then remove the `mod.open:sessions` key and the `mod:session-diff` section from `~/.config/herdr-app/keys.json`.
+Then remove the `mod.open:sessions` and `mod.open:session-diff` keys and the `mod:session-diff` section from
+`~/.config/herdr-app/keys.json`.
 Baseline and index caches live in `~/.cache/herdr-session-diff` and `~/.cache/herdr-sessions` on each machine.

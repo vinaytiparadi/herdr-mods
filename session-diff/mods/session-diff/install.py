@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-# Puts the Diff and Sessions panels (the personal mods session-diff and sessions) into Herdr's tab bar.
+# Puts the Diff and Sessions panels (the mods session-diff and sessions, whichever are in mods/) into
+# Herdr's tab bar. Both mods carry this same file; run either copy, and again after adding the other mod.
 # Herdr's own layouts and mods are read-only, so this makes copies of this Herdr version's shipped ones:
-#   mods/my-tabs          the tabs mod, with a Diff and a Sessions button after Changes
-#   layouts/my-herdr.json the main layout, using my-tabs, with the two panels in its side panel
-# and adds their keys to keys.json where the key is free (Sessions popup, Diff's copy keys).
+#   mods/my-tabs          the tabs mod, with a Diff and/or a Sessions button after Changes
+#   layouts/my-herdr.json the main layout, using my-tabs, with those panels in its side panel
+# and adds their keys to keys.json where the key is free (Sessions popup, Diff dialog, Diff's copy keys).
 #
 # Run it once to install (it switches the window to my-herdr), and again whenever Herdr updates:
 # my-tabs runs it by itself on the first start of a new version. When a new tab bar or layout no
 # longer fits the edits, it changes nothing, says why and exits 1; the old copies keep working.
-#   python3 ~/.config/herdr-app/mods/sessions/install.py [--version <herdr version>]
+#   python3 ~/.config/herdr-app/mods/<sessions or session-diff>/install.py [--version <herdr version>]
 import json
 import os
 import re
@@ -20,22 +21,33 @@ HOME = os.environ.get("HERDR_APP_HOME") or os.path.expanduser("~/.config/herdr-a
 MODS, LAYOUTS = os.path.join(HOME, "mods"), os.path.join(HOME, "layouts")
 TABS, LAYOUT = "my-tabs", "my-herdr"
 MAC = sys.platform == "darwin"
-KEYS = {
-    "global": {("cmd" if MAC else "ctrl") + "-shift-s": "mod.open:sessions",
-               ("cmd" if MAC else "ctrl") + "-shift-g": "mod.open:session-diff"},
-    "mod:session-diff": {("cmd" if MAC else "ctrl") + "-c": "session-diff.copy",
-                         ("cmd" if MAC else "ctrl") + "-shift-c": "session-diff.copy-patch",
-                         ("cmd" if MAC else "ctrl") + "-a": "session-diff.all"},
+MOD = "cmd" if MAC else "ctrl"
+# Each mod: its tab-bar button (label, icon), its side-panel block and its keys.
+PANELS = {
+    "session-diff": {"label": "Diff", "icon": "mods/session-diff/diff.svg",
+                     "block": {"id": "session-diff", "type": "block", "content": {"mod": "session-diff", "props": {"panel": True}}},
+                     "keys": {"global": {MOD + "-shift-g": "mod.open:session-diff"},
+                              "mod:session-diff": {MOD + "-c": "session-diff.copy", MOD + "-shift-c": "session-diff.copy-patch",
+                                                   MOD + "-a": "session-diff.all"}}},
+    "sessions": {"label": "Sessions", "icon": "mods/sessions/sessions.svg",
+                 "block": {"id": "sessions", "type": "block", "content": {"mod": "sessions"}},
+                 "keys": {"global": {MOD + "-shift-s": "mod.open:sessions"}}},
 }
 # Added to my-tabs: on the first start of another Herdr version, it runs this file again.
 RESYNC = '''
-// Personal (mods/sessions/install.py): after a Herdr update this copy re-makes itself from the new tab bar.
+// Added by install.py (in mods/sessions or mods/session-diff): after a Herdr update this copy re-makes itself.
 function resync(cx) {
   cx.spawn(async () => {
     const now = updates().app.version;
     const mine = JSON.parse((await readTextFile(`${appHome()}/mods/my-tabs/mod.json`)) ?? "{}").cloned_from?.version;
     if (!now || !mine || mine === now) return;
-    const r = await exec("python3", [`${appHome()}/mods/sessions/install.py`, "--version", now]);
+    let script = null;
+    for (const m of ["sessions", "session-diff"]) {
+      const p = `${appHome()}/mods/${m}/install.py`;
+      if (!script && (await readTextFile(p)) != null) script = p;
+    }
+    if (!script) return;
+    const r = await exec("python3", [script, "--version", now]);
     if (r.code !== 0) notify({ title: "Diff and Sessions stay on the old tab bar", body: (r.stdout + r.stderr).trim().split("\\n").pop(), level: "warning" });
   });
 }
@@ -65,8 +77,16 @@ def cli(*args):
                           stderr=subprocess.STDOUT, universal_newlines=True, timeout=60)
 
 
-def tabs_mod(version):
-    """The shipped tabs mod with the two buttons and the resync, as {file: text}."""
+def present():
+    """The panel mods that are installed, in tab-bar order."""
+    have = [m for m in PANELS if os.path.isfile(os.path.join(MODS, m, "main.js"))]
+    if not have:
+        raise Misfit("neither session-diff nor sessions is in %s" % MODS)
+    return have
+
+
+def tabs_mod(version, mods):
+    """The shipped tabs mod with the buttons and the resync, as {file: text}."""
     src = os.path.join(MODS, "tabs")
     files = {}
     for name in os.listdir(src):
@@ -75,11 +95,13 @@ def tabs_mod(version):
         files[name] = text.replace("mods/tabs/", "mods/%s/" % TABS)
     js = files["main.js"]
     js = once(js, r'const enabled = (shared\("workspace\.panels"\) \?\? \[[^\]]*\]);',
-              r'// Diff and Sessions (personal mods) are always on, after the panels the welcome chose.\n'
-              r'    const enabled = [...(\1), "session-diff", "sessions"];', "panel list")
+              lambda m: '// %s (mods/%s) always on, after the panels the welcome chose.\n'
+                        '    const enabled = [...(%s), %s];' % (" and ".join(PANELS[x]["label"] for x in mods), ", mods/".join(mods),
+                                                          m.group(1), ", ".join('"%s"' % x for x in mods)), "panel list")
     js = once(js, r'^(\s*)(\.when\(enabled\.includes\("changes"\).*\n)',
-              r'\1\2\1.child(panelButton("session-diff", "Diff", "mods/session-diff/diff.svg"))\n'
-              r'\1.child(panelButton("sessions", "Sessions", "mods/sessions/sessions.svg"))\n', "Changes button")
+              lambda m: m.group(1) + m.group(2) + "".join('%s.child(panelButton("%s", "%s", "%s"))\n'
+                                                          % (m.group(1), x, PANELS[x]["label"], PANELS[x]["icon"]) for x in mods),
+              "Changes button")
     m = re.search(r'^import \{([^}]*)\} from "herdr";', js, re.M)
     if not m:
         raise Misfit("the new tab bar doesn't import from herdr")
@@ -101,7 +123,7 @@ def tabs_mod(version):
     return files
 
 
-def main_layout(version):
+def main_layout(version, mods):
     with open(os.path.join(LAYOUTS, "main.json"), encoding="utf-8") as f:
         tree = json.load(f)
     found = {"tabs": 0, "body": 0}
@@ -112,8 +134,7 @@ def main_layout(version):
             found["tabs"] += 1
         if n.get("id") == "panel-body":
             have = {c.get("id") for c in n.get("children", [])}
-            for block in ({"id": "session-diff", "type": "block", "content": {"mod": "session-diff", "props": {"panel": True}}},
-                          {"id": "sessions", "type": "block", "content": {"mod": "sessions"}}):
+            for block in (PANELS[x]["block"] for x in mods):
                 if block["id"] not in have:
                     n.setdefault("children", []).append(block)
             found["body"] += 1
@@ -134,7 +155,7 @@ def write(path, text):
     os.replace(tmp, path)
 
 
-def keys():
+def keys(mods):
     path = os.path.join(HOME, "keys.json")
     try:
         with open(path, encoding="utf-8") as f:
@@ -142,7 +163,7 @@ def keys():
     except FileNotFoundError:
         return "keys.json isn't there yet (start Herdr once); keys not added"
     added = []
-    for section, binds in KEYS.items():
+    for section, binds in ((s, b) for x in mods for s, b in PANELS[x]["keys"].items()):
         sec = have.setdefault(section, {})
         for key, action in binds.items():
             if key not in sec:
@@ -158,7 +179,8 @@ def main():
     version = args[args.index("--version") + 1] if "--version" in args else cli("--version").stdout.split()[-1]
     first = not os.path.exists(os.path.join(LAYOUTS, LAYOUT + ".json"))
     # Everything is made before anything is written, so a misfit changes nothing.
-    files, layout_text = tabs_mod(version), main_layout(version)
+    mods = present()
+    files, layout_text = tabs_mod(version, mods), main_layout(version, mods)
 
     new, old, live = os.path.join(MODS, "." + TABS + "-new"), os.path.join(MODS, "." + TABS + "-old"), os.path.join(MODS, TABS)
     for p in (new, old):
@@ -175,7 +197,7 @@ def main():
     os.rename(new, live)
     shutil.rmtree(old, ignore_errors=True)
     write(os.path.join(LAYOUTS, LAYOUT + ".json"), layout_text)
-    print("my-tabs and my-herdr made from Herdr %s; %s" % (version, keys()))
+    print("my-tabs and my-herdr made from Herdr %s with %s; %s" % (version, " and ".join(PANELS[x]["label"] for x in mods), keys(mods)))
     if first:
         cli("do", "layout.switch", json.dumps({"name": LAYOUT}))
 
