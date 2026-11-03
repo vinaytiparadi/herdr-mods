@@ -7,6 +7,16 @@ Two personal mods for the [Herdr](https://herdr.dev) app, plus an installer that
 - **Sessions** ([`sessions/`](sessions/RECIPE.md)): lists Claude Code, Codex and Kiro sessions on every machine Herdr knows. You can
   resume, fork or delete them.
 
+## Works on every machine, nothing to install
+
+Both mods work on remote machines too, not just this computer. Diff follows a terminal's folder wherever that folder is,
+and Sessions lists the sessions on every machine you've added to Herdr. Neither needs anything installed: no Atuin, no
+daemon, no package, on this computer or the others. Their scripts are sent along each time and run with tools the
+machines already have:
+- **Diff:** `sh`, `python3` and `git`. Git is used only as a diff tool; the folder doesn't need to be a repo.
+- **Sessions:** `python3` 3.9 or newer. To delete Codex or Kiro sessions it uses their own CLIs (`codex`, `kiro-cli`),
+  which are there if you use those agents.
+
 ## Using Diff
 
 Diff shows the folder of the focused terminal. The first time it sees a folder, it saves a baseline, and every change
